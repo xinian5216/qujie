@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>区界 Qujie — Claude 不支持地区检测</title>
+  <meta name="description" content="检测你是否会被 Claude 判定为不支持地区 / 中国用户。对照 Anthropic 官方支持名单与 Claude Code 公开检测逻辑。" />
+  <meta name="theme-color" content="#09090b" />
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600&family=Noto+Serif+SC:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #09090b;
+      --bg-elevated: #121214;
+      --bg-subtle: #1a1a1e;
+      --fg: #eceae4;
+      --muted: #9a9890;
+      --subtle: #6e6c66;
+      --line: color-mix(in oklab, var(--fg) 12%, transparent);
+      --line-strong: color-mix(in oklab, var(--fg) 22%, transparent);
+      --blocked: #c45c4a;
+      --blocked-dim: color-mix(in oklab, var(--blocked) 18%, transparent);
+      --risk: #c4a056;
+      --risk-dim: color-mix(in oklab, var(--risk) 16%, transparent);
+      --clear: #6a9e86;
+      --clear-dim: color-mix(in oklab, var(--clear) 16%, transparent);
+      --font-display: "Noto Serif SC", "Songti SC", Georgia, serif;
+      --font-sans: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+      --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; background: var(--bg); color: var(--fg); }
+    body {
+      margin: 0;
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+      background-image:
+        linear-gradient(180deg, #0c0c0e 0%, var(--bg) 28%, var(--bg) 100%),
+        radial-gradient(1200px 500px at 50% -10%, color-mix(in oklab, var(--fg) 6%, transparent), transparent 70%);
+    }
+    button:not(:disabled), [role="button"] { cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: 0.6; }
+    a { color: inherit; }
+    .wrap { position: relative; min-height: 100vh; }
+    .grid-bg {
+      pointer-events: none;
+      position: absolute;
+      inset: 0 0 auto;
+      height: 420px;
+      opacity: 0.4;
+      background-image:
+        linear-gradient(to right, color-mix(in oklab, var(--fg) 6%, transparent) 1px, transparent 1px),
+        linear-gradient(to bottom, color-mix(in oklab, var(--fg) 6%, transparent) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: linear-gradient(180deg, black, transparent);
+    }
+    header, main { position: relative; max-width: 64rem; margin: 0 auto; padding: 0 1.25rem; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: 1.25rem; padding-bottom: 1.25rem; }
+    .brand { display: flex; align-items: center; gap: 0.75rem; }
+    .mark {
+      display: grid; place-items: center; width: 2rem; height: 2rem;
+      border: 1px solid var(--line-strong); border-radius: 8px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--blocked); }
+    .brand-name { font-family: var(--font-display); font-size: 1.125rem; line-height: 1; }
+    .brand-tag { margin-top: 4px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--subtle); }
+    .lang { display: flex; border: 1px solid var(--line); border-radius: 10px; padding: 2px; }
+    .lang button {
+      height: 2rem; min-width: 2.5rem; border: 0; border-radius: 8px;
+      padding: 0 0.75rem; background: transparent; color: var(--muted);
+      font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
+    }
+    .lang button.on { background: var(--fg); color: var(--bg); }
+    .hero { display: grid; gap: 2rem; padding: 1.5rem 0 2.5rem; }
+    @media (min-width: 1024px) {
+      .hero { grid-template-columns: minmax(0, 1.15fr) auto; align-items: end; }
+    }
+    .kicker { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--subtle); }
+    h1 { margin: 0.75rem 0 0; max-width: 36rem; font-family: var(--font-display); font-size: clamp(2.15rem, 5vw, 3rem); line-height: 1.15; font-weight: 600; letter-spacing: -0.02em; text-wrap: balance; }
+    .sub { margin: 1rem 0 0; max-width: 36rem; color: var(--muted); font-size: 0.95rem; line-height: 1.65; }
+    .cta { display: flex; flex-direction: column; align-items: stretch; gap: 0.75rem; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+      height: 2.75rem; padding: 0 1.25rem; border: 0; border-radius: 10px;
+      background: var(--fg); color: var(--bg); font-family: var(--font-sans); font-size: 0.95rem; font-weight: 600;
+    }
+    .hint { text-align: center; font-family: var(--font-mono); font-size: 11px; color: var(--subtle); }
+    .report { display: grid; gap: 1rem; }
+    @media (min-width: 1024px) { .report { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); } }
+    .card { border: 1px solid var(--line); background: var(--bg-elevated); border-radius: 16px; padding: 1.75rem; }
+    .label { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--subtle); }
+    .ring-wrap { display: grid; place-items: center; margin-top: 1.25rem; }
+    .verdict { margin: 1.25rem 0 0; font-family: var(--font-display); font-size: 1.5rem; line-height: 1.3; }
+    .verdict.low { color: var(--clear); }
+    .verdict.medium { color: var(--risk); }
+    .verdict.idle { color: var(--muted); }
+    .verdict.blocked, .verdict.high, .verdict.china-block { color: var(--blocked); }
+    .muted { color: var(--muted); font-size: 0.9rem; line-height: 1.6; }
+    .badge {
+      border-radius: 999px; padding: 0.25rem 0.65rem;
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .ok { background: var(--clear-dim); color: var(--clear); }
+    .bad { background: var(--blocked-dim); color: var(--blocked); }
+    .unk { background: var(--bg-subtle); color: var(--muted); }
+    dl { margin: 1rem 0 0; }
+    .row { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--line); padding: 0.65rem 0; }
+    .row:last-child { border-bottom: 0; }
+    .row dt { color: var(--subtle); font-size: 0.75rem; flex-shrink: 0; }
+    .row dd { margin: 0; text-align: right; font-family: var(--font-mono); font-size: 0.75rem; word-break: break-all; }
+    .row.warn dd { color: var(--blocked); }
+    .signals { margin-top: 1.5rem; display: grid; gap: 0.5rem; }
+    .sig {
+      display: grid; grid-template-columns: 1fr auto; gap: 0.35rem 1rem;
+      padding: 0.7rem 0.85rem; border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
+    }
+    .sig-name { font-size: 0.8rem; }
+    .sig-val { font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-align: right; }
+    .bar { grid-column: 1 / -1; height: 3px; background: var(--bg-subtle); border-radius: 99px; overflow: hidden; }
+    .bar > i { display: block; height: 100%; background: var(--blocked); width: 0; }
+    .extras { margin-top: 4rem; display: grid; gap: 2.5rem; padding-bottom: 3rem; }
+    h2 { font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin: 0; }
+    .two { display: grid; gap: 0.75rem; }
+    @media (min-width: 768px) { .two { grid-template-columns: 1fr 1fr; } }
+    .tile { border: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; background: var(--bg-elevated); }
+    .n { font-family: var(--font-mono); font-size: 11px; color: var(--subtle); }
+    .tile h3 { margin: 0.35rem 0 0.5rem; font-size: 1rem; font-weight: 600; }
+    .field { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+    input {
+      flex: 1; height: 2.5rem; padding: 0 0.85rem; border: 1px solid var(--line); border-radius: 10px;
+      background: var(--bg); color: var(--fg); font-family: var(--font-sans); font-size: 0.9rem; outline: none;
+    }
+    input:focus { border-color: var(--line-strong); }
+    .ghost {
+      height: 2.5rem; padding: 0 1rem; border: 1px solid var(--line); border-radius: 10px;
+      background: transparent; color: var(--fg); font-size: 0.9rem;
+    }
+    .hits { margin-top: 0.75rem; display: grid; gap: 0.4rem; }
+    .hit { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.85rem; padding: 0.45rem 0; border-bottom: 1px solid var(--line); }
+    .faq { display: grid; gap: 0.5rem; margin-top: 0.75rem; }
+    .faq button {
+      width: 100%; text-align: left; background: var(--bg-elevated); border: 1px solid var(--line);
+      border-radius: 12px; padding: 0.9rem 1rem; color: var(--fg); font-size: 0.9rem;
+    }
+    .faq .a { display: none; margin-top: 0.5rem; color: var(--muted); font-size: 0.85rem; line-height: 1.6; font-weight: 400; }
+    .faq button.open .a { display: block; }
+    footer { border-top: 1px solid var(--line); padding: 1.5rem 0 2.5rem; font-size: 0.75rem; line-height: 1.7; color: var(--subtle); }
+    .idle-row { display: flex; align-items: center; gap: 0.75rem; margin-top: 2rem; color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="grid-bg" aria-hidden="true"></div>
+    <header>
+      <div class="brand">
+        <span class="mark"><span class="dot"></span></span>
+        <div>
+          <p class="brand-name" id="brand">区界</p>
+          <p class="brand-tag" id="tag">Claude 不支持地区检测</p>
+        </div>
+      </div>
+      <div class="lang" role="group" aria-label="Language">
+        <button type="button" id="btn-zh" class="on">ZH</button>
+        <button type="button" id="btn-en">EN</button>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <div>
+          <p class="kicker">Claude · unsupported region</p>
+          <h1 id="hero">你会被判定为不支持地区用户吗？</h1>
+          <p class="sub" id="sub">按 Anthropic 官方支持名单核验出口 IP，并按公开的 Claude Code 逻辑扫描本机中国用户指纹。</p>
+        </div>
+        <div class="cta">
+          <button class="btn" id="scan" type="button">开始检测</button>
+          <p class="hint" id="stay">本机指纹不上传</p>
+        </div>
+      </section>
+
+      <section class="report">
+        <article class="card">
+          <p class="label" id="local-label">本机指纹 0–100</p>
+          <div class="ring-wrap">
+            <svg id="ring" width="168" height="168" viewBox="0 0 168 168" aria-hidden="true">
+              <circle cx="84" cy="84" r="70" fill="none" stroke="#1a1a1e" stroke-width="10" />
+              <circle id="arc" cx="84" cy="84" r="70" fill="none" stroke="#c45c4a" stroke-width="10"
+                stroke-linecap="round" transform="rotate(-90 84 84)" stroke-dasharray="439.8" stroke-dashoffset="439.8" />
+              <text id="score-text" x="84" y="92" text-anchor="middle" fill="#eceae4"
+                font-family="IBM Plex Mono, ui-monospace, monospace" font-size="36" font-weight="500">0</text>
+            </svg>
+          </div>
+          <h2 class="verdict idle" id="verdict">待检测</h2>
+          <p class="muted" id="verdict-hint">尚未扫描</p>
+          <div class="signals" id="signals"></div>
+        </article>
+        <article class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <p class="label" id="exit-label">出口节点</p>
+            <span class="badge unk" id="geo-badge" hidden></span>
+          </div>
+          <div id="geo-idle" class="idle-row">检测分两层：官方地区名单看出口 IP；中国用户画像看本机时区、语言、字体与 WebRTC。</div>
+          <dl id="geo-rows" hidden></dl>
+        </article>
+      </section>
+
+      <div class="extras">
+        <section>
+          <h2 id="method-title">检测原理</h2>
+          <div class="two" id="method"></div>
+        </section>
+        <section>
+          <h2 id="proxy-title">中转域名自检</h2>
+          <p class="muted" id="proxy-hint">粘贴 ANTHROPIC_BASE_URL 或中转 hostname</p>
+          <div class="field">
+            <input id="host" placeholder="https://api.example.com" autocomplete="off" />
+            <button class="ghost" id="proxy-go" type="button">核对</button>
+          </div>
+          <p class="muted" id="proxy-out" style="margin-top:0.75rem"></p>
+        </section>
+        <section>
+          <h2 id="country-title">地区查询</h2>
+          <div class="field">
+            <input id="cq" placeholder="中国 / CN / Japan" autocomplete="off" />
+          </div>
+          <div class="hits" id="chits"></div>
+        </section>
+        <section>
+          <h2 id="faq-title">常见问题</h2>
+          <div class="faq" id="faq"></div>
+        </section>
+        <footer id="disc"></footer>
+      </div>
+    </main>
+  </div>
+  <script>
+  const SUPPORTED = new Set("AD AE AG AL AM AO AR AT AU AZ BA BB BD BE BF BG BH BI BJ BN BO BR BS BT BW BZ CA CF CG CH CI CL CM CO CR CV CY CZ DE DJ DK DM DO DZ EC EE EG ER ES ET FI FJ FM FR GA GB GD GE GH GM GN GQ GR GT GW GY HN HR HT HU ID IE IL IN IQ IS IT JM JO JP KE KG KH KI KM KN KR KW KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MG MH MK ML MN MR MT MU MV MW MX MY MZ NA NE NG NI NL NO NP NR NZ OM PA PE PG PH PK PL PS PT PW PY QA RO RS RW SA SB SC SD SE SG SI SK SL SM SN SO SR SS ST SV SZ TD TG TH TJ TL TM TN TO TR TT TV TW TZ UA UG US UY UZ VA VC VN VU WS ZA ZM ZW".split(" "));
+  const CHINA = new Set(["CN","HK","MO"]);
+  const COUNTRIES = [
+    ["CN","中国大陆","China (Mainland)"],["HK","香港","Hong Kong"],["MO","澳门","Macau"],["TW","台湾","Taiwan"],
+    ["US","美国","United States"],["JP","日本","Japan"],["KR","韩国","South Korea"],["SG","新加坡","Singapore"],
+    ["GB","英国","United Kingdom"],["DE","德国","Germany"],["FR","法国","France"],["AU","澳大利亚","Australia"],
+    ["CA","加拿大","Canada"],["IN","印度","India"],["ID","印度尼西亚","Indonesia"],["MY","马来西亚","Malaysia"],
+    ["TH","泰国","Thailand"],["VN","越南","Vietnam"],["PH","菲律宾","Philippines"],["RU","俄罗斯","Russia"],
+    ["IR","伊朗","Iran"],["KP","朝鲜","North Korea"],["CU","古巴","Cuba"],["SY","叙利亚","Syria"],
+    ["BY","白俄罗斯","Belarus"],["VE","委内瑞拉","Venezuela"],["MM","缅甸","Myanmar"],["AF","阿富汗","Afghanistan"],
+    ["YE","也门","Yemen"],["UA","乌克兰","Ukraine"],["NL","荷兰","Netherlands"],["SE","瑞典","Sweden"],
+    ["CH","瑞士","Switzerland"],["IT","意大利","Italy"],["ES","西班牙","Spain"],["BR","巴西","Brazil"],
+    ["MX","墨西哥","Mexico"],["AE","阿联酋","United Arab Emirates"],["NZ","新西兰","New Zealand"],
+    ["TR","土耳其","Türkiye"],["PL","波兰","Poland"],["IE","爱尔兰","Ireland"]
+  ];
+  const ALIAS = { 中国:"CN",大陆:"CN",china:"CN",香港:"HK",hongkong:"HK","hong kong":"HK",澳门:"MO",macau:"MO",台湾:"TW",taiwan:"TW",日本:"JP",japan:"JP",韩国:"KR",korea:"KR",新加坡:"SG",singapore:"SG",美国:"US",usa:"US",英国:"GB",uk:"GB",俄罗斯:"RU",russia:"RU" };
+  const CJK = ["PingFang SC","PingFang TC","Hiragino Sans GB","Microsoft YaHei","SimSun","SimHei","FangSong","KaiTi","STHeiti","WenQuanYi Micro Hei"];
+  const VENDOR = ["MiSans","HarmonyOS Sans","HarmonyOS Sans SC","OPPO Sans","HONOR Sans","vivo Sans","Alibaba PuHuiTi","Douyin Sans"];
+  const CN_BROWSERS = [[/MicroMessenger/i,"WeChat"],[/QQ\//i,"QQ"],[/Quark/i,"Quark"],[/UCBrowser|UBrowser/i,"UC"],[/Baidu|BIDUBrowser/i,"Baidu"],[/HuaweiBrowser/i,"Huawei Browser"],[/MiuiBrowser/i,"Mi Browser"],[/VivoBrowser/i,"vivo Browser"],[/HeyTapBrowser|OppoBrowser/i,"OPPO Browser"],[/Sogou/i,"Sogou"]];
+  const CN_DEVICES = ["HUAWEI","HONOR","Xiaomi","Redmi","OPPO","vivo","OnePlus","realme","Meizu","HarmonyOS"];
+  const CHINA_TZ = new Set(["Asia/Shanghai","Asia/Urumqi","Asia/Chongqing","Asia/Harbin","PRC","Asia/Beijing"]);
+  const LAB = ["deepseek","moonshot","kimi","minimax","zhipu","chatglm","baichuan","dashscope","qwen","tongyi","volcengine","doubao","bytedance","hunyuan","qianfan","ernie","iflytek"];
+  const INFRA = ["aliyun","alicloud","aliyuncs","alibaba","tencentcloud","qcloud","huaweicloud","baidubce","oss-cn-","cn-hangzhou","cn-beijing",".cn"];
+  const RESELLER = ["claude-cn","claudecn","claudeapi","anthropic-proxy","openai-sb","closeai"];
+  const HOSTING = ["amazon","aws","google","gcp","microsoft","azure","digitalocean","linode","ovh","hetzner","cloudflare","akamai"];
+  const CN_CLOUD = ["alibaba","aliyun","tencent","huawei","baidu","bytedance","volcengine","chinanet","china unicom","china mobile"];
+
+  const copy = {
+    zh: {
+      brand:"区界", tag:"Claude 不支持地区检测",
+      hero:"你会被判定为不支持地区用户吗？",
+      sub:"按 Anthropic 官方支持名单核验出口 IP，并按公开的 Claude Code 逻辑扫描本机中国用户指纹。",
+      scan:"开始检测", rescan:"重新扫描", scanning:"扫描中",
+      local:"本机指纹 0–100", exit:"出口节点", supported:"支持地区", unsupported:"不支持地区", unknown:"未知",
+      stay:"本机指纹不上传", method:"检测原理", proxy:"中转域名自检",
+      proxyHint:"粘贴 ANTHROPIC_BASE_URL 或中转 hostname", proxyGo:"核对", countries:"地区查询", faq:"常见问题",
+      idleHint:"检测分两层：官方地区名单看出口 IP；中国用户画像看本机时区、语言、字体与 WebRTC。",
+      disc:"本工具根据 Anthropic 公开的支持地区名单，以及针对 Claude Code 的公开逆向报告，在浏览器本地估算风险。结果不是 Anthropic 的实际判定，也不会上传指纹。源码：github.com/xinian5216/qujie",
+      methods:[
+        ["01","地区层 · 出口 IP","Claude.ai 用 IP 粗粒度国家判断。不在支持名单则 302 到 app-unavailable-in-region。中国大陆、香港、澳门均不在名单。"],
+        ["02","Claude Code · 时区","换 VPN 只改出口 IP。Claude Code 读操作系统时区。Asia/Shanghai 或 Asia/Urumqi 是原生信号，日期会从 2026-09-11 变成 2026/09/11。"],
+        ["03","本机中国用户画像","语言、中文字体、国产浏览器 / 设备、WebRTC 公网泄露。分数高不代表官方已封，只说明浏览器侧很像中国用户。"],
+        ["04","中转域名","ANTHROPIC_BASE_URL 若落在 .cn、阿里云 / 腾讯云或国产大模型域名上，会被当成中转，并改 system prompt 里的撇号。"]
+      ],
+      faq:[
+        ["这是 Anthropic 的官方判定吗？","不是。地区层对照的是官方支持名单；本机指纹对照的是公开逆向报告。真实风控还会看支付、手机号、账号行为。"],
+        ["为什么时区比 IP 更关键？","换 VPN 只改出口 IP。Claude Code 读的是操作系统时区。Asia/Shanghai 或 Asia/Urumqi 是原生信号。"],
+        ["香港为什么也不行？","官方支持名单不含香港与澳门。经香港云 ASN 出口，常见返回 302。台湾在名单内。"],
+        ["会上传我的指纹吗？","本机十项指纹只在浏览器里计算。出口 IP 查询会把当前请求地址发到地理定位接口，这是地区检测所必需的。"],
+        ["分数低就一定能用 Claude 吗？","不能保证。低分只说明浏览器侧中国画像较弱。账号注册地、支付渠道、中转域名仍可能触发限制。"]
+      ]
+    },
+    en: {
+      brand:"Qujie", tag:"Claude unsupported-region check",
+      hero:"Would Claude treat you as an unsupported-region user?",
+      sub:"Checks your exit IP against Anthropic’s official list, then scans local China-user fingerprints the way public Claude Code reverse-engineering describes.",
+      scan:"Run scan", rescan:"Scan again", scanning:"Scanning",
+      local:"Local fingerprint 0–100", exit:"Exit node", supported:"Supported", unsupported:"Unsupported", unknown:"Unknown",
+      stay:"local fingerprints stay here", method:"How it works", proxy:"Relay hostname check",
+      proxyHint:"Paste ANTHROPIC_BASE_URL or a relay hostname", proxyGo:"Check", countries:"Region lookup", faq:"FAQ",
+      idleHint:"Two layers: official region list vs exit IP; China-user portrait vs timezone, language, fonts and WebRTC.",
+      disc:"Estimates risk from Anthropic’s public supported-regions list and public Claude Code reverse-engineering. Not Anthropic’s real decision. Fingerprints stay in the browser. Source: github.com/xinian5216/qujie",
+      methods:[
+        ["01","Region layer · exit IP","Claude.ai maps the exit IP to a country. Unsupported regions get 302 app-unavailable-in-region. Mainland China, Hong Kong and Macau are absent."],
+        ["02","Claude Code · timezone","A VPN only changes the exit IP. Claude Code reads the OS timezone. Asia/Shanghai or Asia/Urumqi is the native signal."],
+        ["03","Local China-user portrait","Language, CJK fonts, Chinese browsers / devices, WebRTC leaks. A high score is not an official ban — it means the browser looks Chinese."],
+        ["04","Relay hostnames","If ANTHROPIC_BASE_URL lands on .cn, Aliyun / Tencent Cloud or a Chinese-lab domain, it is treated as a relay."]
+      ],
+      faq:[
+        ["Is this Anthropic’s real decision?","No. The region layer uses the public supported list; local fingerprints follow public reverse-engineering. Real enforcement also uses payments, phone numbers and account behavior."],
+        ["Why is timezone more important than IP?","A VPN only changes the exit IP. Claude Code reads the OS timezone. Asia/Shanghai or Asia/Urumqi is the native signal."],
+        ["Why is Hong Kong blocked too?","Hong Kong and Macau are not on the list. Hong Kong cloud ASN exits often get 302. Taiwan is listed as supported."],
+        ["Do you upload my fingerprints?","The ten local fingerprints stay in the browser. Exit-IP lookup sends the current request address to a geolocation API — required for the region check."],
+        ["Does a low score mean Claude will work?","No. Low score only means the browser-side China portrait is weak. Account locale, payment rails and relay hostnames can still trigger limits."]
+      ]
+    }
+  };
+  const verdictCopy = {
+    idle: { zh:"待检测", en:"Ready", hintZh:"尚未扫描", hintEn:"Not scanned yet" },
+    "china-block": { zh:"中国相关地区 · 官方不可用", en:"China-related · officially unavailable", hintZh:"出口落在中国大陆 / 香港 / 澳门。Claude.ai 会在地区层直接拒绝。", hintEn:"Exit is CN / HK / MO. Claude.ai rejects at the region layer." },
+    blocked: { zh:"不支持地区", en:"Unsupported region", hintZh:"出口国家不在 Anthropic 官方支持名单内。", hintEn:"Exit country is not on Anthropic’s supported list." },
+    high: { zh:"出口可用 · 中国用户高风险", en:"Region ok · high China-user risk", hintZh:"IP 在支持地区，但本机时区 / 语言等画像很像中国用户。Claude Code 仍可能标记。", hintEn:"IP is in a supported region, but the local portrait looks strongly Chinese. Claude Code may still flag it." },
+    medium: { zh:"出口可用 · 中等指纹风险", en:"Region ok · medium fingerprint risk", hintZh:"地区层会放行，但仍有若干中国相关信号。", hintEn:"Region layer would allow you, but some China-related signals remain." },
+    low: { zh:"低风险", en:"Low risk", hintZh:"出口在支持地区，本机中国用户指纹较弱。", hintEn:"Exit is supported and local China-user fingerprints are weak." }
+  };
+
+  let lang = "zh";
+  let phase = "idle";
+  let last = { fp: null, geo: null };
+
+  try { const s = localStorage.getItem("qujie-lang"); if (s === "en" || s === "zh") lang = s; } catch {}
+
+  function $(id) { return document.getElementById(id); }
+  function countryLabel(iso) {
+    if (!iso) return lang === "zh" ? "未知" : "Unknown";
+    const rec = COUNTRIES.find((c) => c[0] === iso);
+    return rec ? (lang === "zh" ? rec[1] : rec[2]) : iso;
+  }
+  function setLang(next) {
+    lang = next;
+    try { localStorage.setItem("qujie-lang", next); } catch {}
+    $("btn-zh").classList.toggle("on", lang === "zh");
+    $("btn-en").classList.toggle("on", lang === "en");
+    const c = copy[lang];
+    $("brand").textContent = c.brand;
+    $("tag").textContent = c.tag;
+    $("hero").textContent = c.hero;
+    $("sub").textContent = c.sub;
+    $("stay").textContent = c.stay;
+    $("local-label").textContent = c.local;
+    $("exit-label").textContent = c.exit;
+    $("method-title").textContent = c.method;
+    $("proxy-title").textContent = c.proxy;
+    $("proxy-hint").textContent = c.proxyHint;
+    $("proxy-go").textContent = c.proxyGo;
+    $("country-title").textContent = c.countries;
+    $("faq-title").textContent = c.faq;
+    $("disc").innerHTML = c.disc.replace("github.com/xinian5216/qujie", '<a href="https://github.com/xinian5216/qujie">github.com/xinian5216/qujie</a>');
+    $("scan").textContent = phase === "running" ? c.scanning : phase === "done" ? c.rescan : c.scan;
+    $("method").innerHTML = c.methods.map(([n,t,b]) => `<div class="tile"><div class="n">${n}</div><h3>${t}</h3><p class="muted" style="margin:0">${b}</p></div>`).join("");
+    $("faq").innerHTML = c.faq.map(([q,a],i) => `<button type="button" data-i="${i}" class="${i===0?"open":""}"><strong>${q}</strong><div class="a">${a}</div></button>`).join("");
+    if (phase === "idle") $("geo-idle").textContent = c.idleHint;
+    renderState();
+    renderCountries($("cq").value);
+  }
+  $("btn-zh").onclick = () => setLang("zh");
+  $("btn-en").onclick = () => setLang("en");
+  $("faq").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    $("faq").querySelectorAll("button").forEach((x) => x.classList.toggle("open", x === b && !x.classList.contains("open") ? true : x === b ? !x.classList.contains("open") : false));
+    const open = b.classList.contains("open");
+    $("faq").querySelectorAll("button").forEach((x) => x.classList.remove("open"));
+    if (open) b.classList.add("open");
+  });
+
+  function fontAvailable(font) {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return false;
+    const sample = "汉字检测MmWw@#";
+    return ["monospace","serif","sans-serif"].filter((base) => {
+      ctx.font = `16px ${base}`;
+      const a = ctx.measureText(sample).width;
+      ctx.font = `16px "${font}", ${base}`;
+      return a !== ctx.measureText(sample).width;
+    }).length >= 2;
+  }
+  function isPrivate(ip) {
+    const [a,b] = ip.split(".").map(Number);
+    return a===10||a===127||(a===192&&b===168)||(a===172&&b>=16&&b<=31)||(a===169&&b===254);
+  }
+  function probeWebRtc(timeoutMs = 2800) {
+    return new Promise((resolve) => {
+      const localIps = [], publicIps = [];
+      if (typeof RTCPeerConnection === "undefined") return resolve({ localIps, publicIps });
+      let settled = false, pc = null;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        try { pc && pc.close(); } catch {}
+        resolve({ localIps: [...new Set(localIps)], publicIps: [...new Set(publicIps)] });
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      try {
+        pc = new RTCPeerConnection({ iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }] });
+        pc.createDataChannel("q");
+        pc.onicecandidate = (ev) => {
+          if (!ev.candidate) { clearTimeout(timer); finish(); return; }
+          const m = /([0-9]{1,3}(?:\.[0-9]{1,3}){3})/.exec(ev.candidate.candidate);
+          if (!m) return;
+          const ip = m[1];
+          if (isPrivate(ip)) localIps.push(ip);
+          else if (Number(ip.split(".")[0]) < 224) publicIps.push(ip);
+        };
+        pc.createOffer().then((o) => pc && pc.setLocalDescription(o));
+      } catch { clearTimeout(timer); resolve({ localIps, publicIps }); }
+    });
+  }
+  async function lookupGeo() {
+    try {
+      const res = await fetch("https://ipwho.is/");
+      const data = await res.json();
+      if (data.success !== false && data.country_code) {
+        const org = data.connection?.org || null;
+        const iso = String(data.country_code).toUpperCase();
+        return {
+          ip: data.ip || "unknown", iso, country: data.country || null,
+          city: [data.city, data.region].filter(Boolean).join(" / ") || "—",
+          asn: data.connection?.asn != null ? "AS" + data.connection.asn : null,
+          org, source: "ipwho.is",
+          isHosting: HOSTING.some((k) => (org||"").toLowerCase().includes(k)),
+          isChineseCloud: CN_CLOUD.some((k) => (org||"").toLowerCase().includes(k)),
+        };
+      }
+    } catch {}
+    try {
+      const res = await fetch("https://get.geojs.io/v1/ip/geo.json");
+      const data = await res.json();
+      if (data.country_code) {
+        const org = data.organization_name || data.organization || null;
+        const iso = String(data.country_code).toUpperCase();
+        return {
+          ip: data.ip || "unknown", iso, country: data.country || null,
+          city: [data.city, data.region].filter(Boolean).join(" / ") || "—",
+          asn: data.asn ? "AS" + data.asn : null, org, source: "geojs",
+          isHosting: HOSTING.some((k) => (org||"").toLowerCase().includes(k)),
+          isChineseCloud: CN_CLOUD.some((k) => (org||"").toLowerCase().includes(k)),
+        };
+      }
+    } catch {}
+    return null;
+  }
+  function collect(rtc) {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "unknown";
+    const langs = navigator.languages?.length ? [...navigator.languages] : [navigator.language];
+    const locale = Intl.DateTimeFormat().resolvedOptions().locale || navigator.language || "";
+    const offset = new Date().getTimezoneOffset();
+    const ua = navigator.userAgent;
+    const first = (langs[0] || "").toLowerCase();
+    let langS = 0, langD = first;
+    if (["zh-cn","zh-hans","zh"].includes(first) || first.startsWith("zh-hans")) { langS = 1; langD = first; }
+    else if (first.startsWith("zh-hk") || first === "zh-mo") langS = 0.7;
+    else if (first.startsWith("zh")) langS = 0.4;
+    const tzS = CHINA_TZ.has(tz) ? 1 : tz === "Asia/Hong_Kong" || tz === "Asia/Macau" || tz === "Asia/Macao" ? 0.85 : tz === "Asia/Taipei" ? 0.15 : 0;
+    const loc = locale.toLowerCase();
+    const locS = loc === "zh-cn" || loc === "zh-hans" || loc === "zh-hans-cn" ? 1 : loc.startsWith("zh-hk") || loc === "zh-mo" ? 0.75 : loc.startsWith("zh") ? 0.35 : 0;
+    const offS = offset === -480 ? 0.7 : offset === -360 ? 0.45 : 0;
+    const cjk = CJK.filter(fontAvailable);
+    const vendor = VENDOR.filter(fontAvailable);
+    let br = { s: 0, n: ua.slice(0, 40) };
+    for (const [re, name] of CN_BROWSERS) if (re.test(ua)) { br = { s: 1, n: name }; break; }
+    const hay = ua;
+    const devHit = CN_DEVICES.find((d) => hay.toLowerCase().includes(d.toLowerCase()));
+    const emo = /HarmonyOS|HUAWEI|HONOR|Xiaomi|Redmi|OPPO|vivo|Miui/i.test(ua) ? 0.8 : 0;
+    let rtcS = 0, rtcD = "no candidates";
+    if (rtc.publicIps.length) { rtcS = 0.85; rtcD = "public " + rtc.publicIps.join(", "); }
+    else if (rtc.localIps.length) { rtcS = 0.4; rtcD = "local " + rtc.localIps.join(", "); }
+    const hits = [
+      { w:24, s:tzS, zh:"系统时区", en:"System timezone", v:tz },
+      { w:18, s:langS, zh:"浏览器语言", en:"Browser languages", v:langs.slice(0,4).join(", ") || "n/a" },
+      { w:14, s:Math.min(1, cjk.length/3), zh:"中文字体", en:"CJK fonts", v:cjk.length ? cjk.slice(0,4).join(", ") : "none" },
+      { w:10, s:vendor.length?1:0, zh:"国产厂商字体", en:"OEM Chinese fonts", v:vendor.length ? vendor.join(", ") : "none" },
+      { w:10, s:rtcS, zh:"WebRTC IP 泄露", en:"WebRTC IP leak", v:rtcD },
+      { w:8, s:br.s, zh:"国产浏览器 / WebView", en:"Chinese browser / WebView", v:br.n },
+      { w:6, s:devHit?1:0, zh:"国产品牌设备", en:"Chinese OEM device", v:devHit || "generic" },
+      { w:4, s:locS, zh:"Intl 区域", en:"Intl locale", v:locale || "n/a" },
+      { w:3, s:offS, zh:"时区偏移", en:"UTC offset", v:"UTC" + (-offset/60 >= 0 ? "+" : "") + (-offset/60) },
+      { w:3, s:emo, zh:"系统厂商风格", en:"OS vendor style", v:emo ? "OEM / Harmony-like" : "other" },
+    ];
+    const score = Math.round(Math.min(100, Math.max(0, hits.reduce((n,h) => n + h.w * h.s, 0))));
+    return { hits, score, tz };
+  }
+  function combine(geo, score) {
+    if (!geo) return "idle";
+    if (CHINA.has(geo.iso)) return "china-block";
+    if (!SUPPORTED.has(geo.iso)) return "blocked";
+    if (score >= 61) return "high";
+    if (score >= 31) return "medium";
+    return "low";
+  }
+  function setRing(score, verdict) {
+    const circ = 2 * Math.PI * 70;
+    $("arc").style.strokeDashoffset = String(circ * (1 - score/100));
+    $("arc").setAttribute("stroke", verdict === "low" ? "#6a9e86" : verdict === "medium" ? "#c4a056" : verdict === "idle" ? "#1a1a1e" : "#c45c4a");
+    $("score-text").textContent = String(score);
+  }
+  function renderState() {
+    const c = copy[lang];
+    const { fp, geo } = last;
+    const score = fp?.score ?? 0;
+    const v = phase === "idle" ? "idle" : combine(geo, score);
+    const vc = verdictCopy[v];
+    $("verdict").className = "verdict " + v;
+    $("verdict").textContent = lang === "zh" ? vc.zh : vc.en;
+    $("verdict-hint").textContent = lang === "zh" ? vc.hintZh : vc.hintEn;
+    setRing(phase === "idle" ? 0 : score, v);
+    $("signals").innerHTML = (fp?.hits || []).map((h) =>
+      `<div class="sig"><div class="sig-name">${lang==="zh"?h.zh:h.en}</div><div class="sig-val">${h.v}</div><div class="bar"><i style="width:${Math.round(h.s*100)}%;background:${h.s>=0.7?"#c45c4a":h.s>=0.3?"#c4a056":"#6a9e86"}"></i></div></div>`
+    ).join("");
+    if (!geo) {
+      $("geo-idle").hidden = false;
+      $("geo-rows").hidden = true;
+      $("geo-badge").hidden = true;
+      $("geo-idle").textContent = phase === "running" ? (lang==="zh"?"正在解析出口节点…":"Resolving exit node…") : c.idleHint;
+      return;
+    }
+    $("geo-idle").hidden = true;
+    $("geo-rows").hidden = false;
+    const ok = SUPPORTED.has(geo.iso);
+    $("geo-badge").hidden = false;
+    $("geo-badge").className = "badge " + (ok ? "ok" : "bad");
+    $("geo-badge").textContent = ok ? c.supported : c.unsupported;
+    const net = geo.isChineseCloud ? (lang==="zh"?"中国运营商 / 云":"Chinese ISP / cloud") : geo.isHosting ? (lang==="zh"?"机房 / 托管":"Hosting / datacenter") : (lang==="zh"?"未检出托管特征":"No hosting signature");
+    const rows = [
+      ["IP", geo.ip, false],
+      [lang==="zh"?"国家 / 地区":"Country", `${countryLabel(geo.iso)} · ${geo.iso}`, !ok],
+      [lang==="zh"?"城市":"City", geo.city || "—", false],
+      ["ASN / Org", [geo.asn, geo.org].filter(Boolean).join(" · ") || "—", geo.isChineseCloud],
+      [lang==="zh"?"网络类型":"Network", net, geo.isHosting || geo.isChineseCloud],
+      [lang==="zh"?"数据源":"Source", geo.source, false],
+    ];
+    $("geo-rows").innerHTML = rows.map(([k,v,w]) => `<div class="row${w?" warn":""}"><dt>${k}</dt><dd>${v}</dd></div>`).join("");
+  }
+  async function runScan() {
+    if (phase === "running") return;
+    phase = "running";
+    last = { fp: null, geo: null };
+    $("scan").disabled = true;
+    $("scan").textContent = copy[lang].scanning;
+    renderState();
+    const rtc = await probeWebRtc();
+    const [fp, geo] = await Promise.all([Promise.resolve(collect(rtc)), lookupGeo()]);
+    last = { fp, geo };
+    phase = "done";
+    $("scan").disabled = false;
+    $("scan").textContent = copy[lang].rescan;
+    renderState();
+  }
+  $("scan").onclick = () => runScan();
+  $("proxy-go").onclick = () => {
+    const raw = $("host").value.trim().toLowerCase().replace(/^https?:\/\//,"").replace(/\/.*$/,"").replace(/:\d+$/,"");
+    if (!raw) { $("proxy-out").textContent = ""; return; }
+    const labHits = LAB.filter((k) => raw.includes(k));
+    const domainHits = [...INFRA, ...RESELLER].filter((k) => raw.includes(k) || (k === ".cn" && (raw.endsWith(".cn") || raw.includes(".com.cn"))));
+    const kind = labHits.length && domainHits.length ? "both" : labHits.length ? "lab" : domainHits.length ? "domain" : "none";
+    const msg = {
+      none: lang==="zh" ? "未命中公开的中转 / 国产大模型关键词。" : "No public relay / Chinese-lab keywords.",
+      domain: lang==="zh" ? "命中中国云 / 中转域名特征：" : "Matched Chinese-cloud / relay keywords: ",
+      lab: lang==="zh" ? "命中国产大模型实验室关键词：" : "Matched Chinese AI-lab keywords: ",
+      both: lang==="zh" ? "同时命中中转域名与国产实验室：" : "Matched both relay and Chinese-lab keywords: ",
+    };
+    $("proxy-out").textContent = msg[kind] + (kind==="none" ? "" : [...new Set([...labHits, ...domainHits])].join(", "));
+  };
+  function renderCountries(q) {
+    const raw = q.trim();
+    const lq = raw.toLowerCase();
+    let list = COUNTRIES;
+    if (lq) {
+      const iso = ALIAS[lq] || ALIAS[raw] || (lq.length === 2 ? lq.toUpperCase() : null);
+      list = COUNTRIES.filter((c) => c[0] === iso || c[0].toLowerCase().includes(lq) || c[1].includes(raw) || c[2].toLowerCase().includes(lq));
+      if (!list.length) list = COUNTRIES.slice(0, 8);
+    } else list = COUNTRIES.slice(0, 8);
+    $("chits").innerHTML = list.slice(0, 8).map(([iso, zh, en]) => {
+      const ok = SUPPORTED.has(iso);
+      return `<div class="hit"><span>${lang==="zh"?zh:en} · ${iso}</span><span class="badge ${ok?"ok":"bad"}">${ok ? copy[lang].supported : copy[lang].unsupported}</span></div>`;
+    }).join("");
+  }
+  $("cq").addEventListener("input", (e) => renderCountries(e.target.value));
+  setLang(lang);
+  setTimeout(() => runScan(), 280);
+  </script>
+</body>
+</html>
