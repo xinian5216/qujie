@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #09090b;
+  --color-bg-elevated: #121214;
+  --color-bg-subtle: #1a1a1e;
+  --color-fg: #eceae4;
+  --color-muted: #9a9890;
+  --color-subtle: #6e6c66;
+  --color-line: color-mix(in oklab, var(--color-fg) 12%, transparent);
+  --color-line-strong: color-mix(in oklab, var(--color-fg) 22%, transparent);
+  --color-accent: #c8ccd4;
+  --color-accent-fg: #09090b;
+  --color-blocked: #c45c4a;
+  --color-blocked-dim: color-mix(in oklab, var(--color-blocked) 18%, transparent);
+  --color-risk: #c4a056;
+  --color-risk-dim: color-mix(in oklab, var(--color-risk) 16%, transparent);
+  --color-clear: #6a9e86;
+  --color-clear-dim: color-mix(in oklab, var(--color-clear) 16%, transparent);
+
+  --font-display: "Noto Serif SC", "Songti SC", "Source Han Serif SC", Georgia, serif;
+  --font-sans: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  --ease-out-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100%;
+    background: var(--color-bg);
+    color: var(--color-fg);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-image:
+      linear-gradient(180deg, #0c0c0e 0%, var(--color-bg) 28%, var(--color-bg) 100%),
+      radial-gradient(1200px 500px at 50% -10%, color-mix(in oklab, var(--color-fg) 6%, transparent), transparent 70%);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
